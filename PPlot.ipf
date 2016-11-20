@@ -3,32 +3,30 @@
 /////////////////////////////////////////////////////////////////////////////////
 // Menu /////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
-strconstant PPlot_Menu="PPlot"
+	strconstant PPlot_Menu="PPlot"
 
 Menu StringFromList(0,PPlot_Menu)
 	RemoveListItem(0,PPlot_Menu)
-	"Summary Plot",/Q,PPlot#MenuCommandSummaryPlot()
-	"\M0Summary Plot (Rec)",/Q,PPlot#MenuCommandSummaryPlot(recursive=1)
+	"\M0Summary Plot (Sub Folder)",/Q,PPlot#MenuCommandSummaryPlot(0)
+	"\M0Summary Plot (Recursive)", /Q,PPlot#MenuCommandSummaryPlot(1)
 	Submenu "Gradation"
 		"*COLORTABLEPOP*(Rainbow)",/Q,PPlot#MenuCommandGradation()
 	End
 	"\M0Gradation (Rainbow)",/Q,PPlot#Gradate("","Rainbow")
 	"Auto Format",/Q,PPlot#Format("")
 	"Auto Legand",/Q,PPlot#LegandFromFolderName("")
-   "Reverse Legend Order",/Q,PPlot#ReverseLegendOrder("","")
+	"Reverse Legend Order",/Q,PPlot#ReverseLegendOrder("","")
 	"Reverse Trace Order",/Q,PPlot#ReverseTraceOrder("")
 End
 
-static Function MenuCommandSummaryPlot([recursive])
+static Function MenuCommandSummaryPlot(recursive)
 	Variable recursive
 	String wlist=""
-	DFREF here = GetDataFolderDFR()
-	Variable i,N=CountObjects(":",4)
-	for(i=0;i<N;i+=1)
-		SetDataFolder $":"+PossiblyQuoteName(GetIndexedObjName(":",4,i))
-		wlist=AddListItem(wList,WaveList("*",";","TEXT:0,DIMS:1"))
-		SetDataFolder here
-	endfor
+	if(recursive)
+		wlist=RecursiveWaveList(":")	
+	else
+		wlist=SubWaveList(":")
+	endif
 	wlist=Unique(wlist)
 	String wNameX,wNameY
 	Prompt wNameX,"X Wave:",popup,wlist
@@ -49,7 +47,7 @@ static Function MenuCommandSummaryPlot([recursive])
 		LegandFromFolderName(graph,root=GetDataFolder(1))
 	endif
 End
-Function/S Unique(list)
+static Function/S Unique(list)
 	String list
 	String buf=""
 	do
@@ -58,6 +56,36 @@ Function/S Unique(list)
 		list=RemoveFromList(item,list)
 	while(ItemsInList(list))
 	return RemoveFromList("",buf)
+End
+static Function/S SubWaveList(path)
+	String path
+	String wlist=""
+	if(DataFolderExists(path))
+		DFREF here = GetDataFolderDFR()
+		SetDataFolder $path
+		Variable i,N=CountObjects(":",4)
+		for(i=0;i<N;i+=1)
+			SetDataFolder $":"+PossiblyQuoteName(GetIndexedObjName(":",4,i))
+			wlist=AddListItem(wList,WaveList("*",";","TEXT:0,DIMS:1"))	
+			SetDataFolder here
+		endfor
+	endif
+	return wlist	
+End
+static Function/S RecursiveWaveList(path)
+	String path
+	String wlist=""
+	if(DataFolderExists(path))
+		DFREF here = GetDataFolderDFR()
+		SetDataFolder $path
+		wlist = WaveList("*",";","TEXT:0,DIMS:1")
+		Variable i,N=CountObjects(":",4)
+		for(i=0;i<N;i+=1)
+			wlist += RecursiveWaveList(":"+PossiblyQuoteName(GetIndexedObjName(":",4,i)))
+		endfor
+		SetDataFolder here		
+	endif
+	return wlist	
 End
 
 static Function MenuCommandGradation()
@@ -68,7 +96,7 @@ End
 /////////////////////////////////////////////////////////////////////////////////
 // Functions ////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////
-Function/S GraphName(s)
+static Function/S GraphName(s)
 	String s
 	if(strlen(s))
 		String gs=WinList(s,";","WIN:1")
@@ -87,6 +115,7 @@ static Function/S Format(graph)
 		ModifyGraph/W=$graph standoff=0 // no statndoff
 		ModifyGraph/W=$graph lsize=1.5  // line width
 		ModifyGraph/W=$graph gFont="Arial",gfSize=16
+		ModifyGraph ZisZ=1
 		return graph
 	endif
 	return ""
@@ -105,22 +134,22 @@ End
 
 static Function SummaryPlot_(root,wNameX,wNameY)
 	String root,wNameX,wNameY
-		DFREF here = GetDataFolderDFR()
-		SetDataFolder $root
-		DFREF there = GetDataFolderDFR()		
-		Variable i,N=CountObjects(root,4)
-		for(i=0;i<N;i+=1)
-			SetDataFolder $":"+PossiblyQuoteName(GetIndexedObjName(":",4,i))
-			WAVE wX=$PossiblyQuoteName(wNameX)
-			WAVE wY=$PossiblyQuoteName(wNameY)
-			if(WaveExists(wY) && WaveExists(wX))
-				AppendToGraph wY vs wX
-			elseif(WaveExists(wY))
-				AppendToGraph wY
-			endif
-			SetDataFolder there
-		endfor
-		SetDataFolder here
+	DFREF here = GetDataFolderDFR()
+	SetDataFolder $root
+	DFREF there = GetDataFolderDFR()		
+	Variable i,N=CountObjects(root,4)
+	for(i=0;i<N;i+=1)
+		SetDataFolder $":"+PossiblyQuoteName(GetIndexedObjName(":",4,i))
+		WAVE wX=$PossiblyQuoteName(wNameX)
+		WAVE wY=$PossiblyQuoteName(wNameY)
+		if(WaveExists(wY) && WaveExists(wX))
+			AppendToGraph wY vs wX
+		elseif(WaveExists(wY))
+			AppendToGraph wY
+		endif
+		SetDataFolder there
+	endfor
+	SetDataFolder here
 End
 
 static Function/S SummaryPlotRecursive(root,wNameX,wNameY)
@@ -193,7 +222,7 @@ static Function/S LegandFromFolderName(graph [root])
 			else
 				df=RemoveEnding(df[strlen(root),inf],":")
 			endif
-			SplitString/E="^'?(.*)'?$" df,df
+			df = ReplaceString("'",df,"")
 			sprintf buf,"%s\\s(%s) %s\r",buf,StringFromList(i,traces),df
 		endfor
 		Legend/A=RC/B=1/F=0/H=30/J RemoveEnding(buf,"\r")
